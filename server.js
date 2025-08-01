@@ -427,39 +427,78 @@ io.on('connection', (socket) => {
     io.emit('onlineUsers', Array.from(userSockets.keys()));
   });
 
-  socket.on('privateMessage', ({ from, to, text, attachment_url }) => {
-    const timestamp = getISTTimestamp();
-    const targetSocketId = userSockets.get(to);
-    const senderSocketId = userSockets.get(from);
+ socket.on('privateMessage', async ({ from, to, text, attachment_url }) => {
+  const timestamp = getISTTimestamp();
+  const targetSocketId = userSockets.get(to);
+  const senderSocketId = userSockets.get(from);
 
-    const insertMessage = (conversationId) => {
-      db.query(`
-        INSERT INTO messages (conversation_id, sender, text, timestamp, attachment_url)
-        VALUES (?, ?, ?, ?, ?)
-      `, [conversationId, from, text || '', timestamp, attachment_url || null], () => {
-        io.emit('newMessage', { from, to });
-      });
-    };
+  console.log(`\n📩 [PRIVATE MESSAGE] From: ${from} ➡ To: ${to}`);
+  console.log(`📝 Message: ${text}`);
+  console.log(`📎 Attachment URL: ${attachment_url || 'None'}`);
+  console.log(`🕒 Timestamp: ${timestamp}`);
+  console.log(`🔌 Sender Socket ID: ${senderSocketId}`);
+  console.log(`🔌 Recipient Socket ID: ${targetSocketId}`);
 
-    db.query(`
+  try {
+    // Step 1: Check if conversation exists
+    const [results] = await db.query(
+      `
       SELECT id FROM conversations
       WHERE (user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)
-    `, [from, to, to, from], (err, results) => {
-      if (results.length > 0) {
-        insertMessage(results[0].id);
-      } else {
-        db.query(`INSERT INTO conversations (user1, user2) VALUES (?, ?)`, [from, to], (err2, result) => {
-          if (!err2) insertMessage(result.insertId);
-        });
-      }
-    });
+      `,
+      [from, to, to, from]
+    );
+
+    let conversationId;
+
+    if (results.length > 0) {
+      conversationId = results[0].id;
+      console.log(`✅ Found existing conversation with ID: ${conversationId}`);
+    } else {
+      // Step 2: Create new conversation
+      const [insertResult] = await db.query(
+        `INSERT INTO conversations (user1, user2) VALUES (?, ?)`,
+        [from, to]
+      );
+      conversationId = insertResult.insertId;
+      console.log(`🆕 Created new conversation with ID: ${conversationId}`);
+    }
+
+    // Step 3: Insert message into messages table
+    const [insertMessageResult] = await db.query(
+      `
+      INSERT INTO messages (conversation_id, sender, text, timestamp, attachment_url)
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [conversationId, from, text || '', timestamp, attachment_url || null]
+    );
+    console.log(`✅ Message inserted into DB (Message ID: ${insertMessageResult.insertId})`);
+
+    // Step 4: Emit newMessage to notify front-end
+    io.emit('newMessage', { from, to });
+    console.log(`📢 Emitted 'newMessage' event`);
 
     const msg = { from, to, text, timestamp, attachment_url };
-    if (targetSocketId) io.to(targetSocketId).emit('receivePrivateMessage', msg);
+
+    // Step 5: Send to recipient if connected
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('receivePrivateMessage', msg);
+      console.log(`📤 Message sent to recipient's socket [${targetSocketId}]`);
+    } else {
+      console.log(`⚠️ Recipient (${to}) is not currently connected`);
+    }
+
+    // Step 6: Send confirmation back to sender
     if (senderSocketId && senderSocketId !== targetSocketId) {
       io.to(senderSocketId).emit('receivePrivateMessage', msg);
+      console.log(`📤 Message confirmation sent back to sender's socket [${senderSocketId}]`);
     }
-  });
+  } catch (err) {
+    console.error('❌ Error in privateMessage handler:', err);
+  }
+});
+
+
 
   socket.on('disconnect', () => {
     for (let [key, val] of userSockets.entries()) {
