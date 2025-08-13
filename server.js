@@ -432,13 +432,6 @@ io.on('connection', (socket) => {
   const targetSocketId = userSockets.get(to);
   const senderSocketId = userSockets.get(from);
 
-  console.log(`\n📩 [PRIVATE MESSAGE] From: ${from} ➡ To: ${to}`);
-  console.log(`📝 Message: ${text}`);
-  console.log(`📎 Attachment URL: ${attachment_url || 'None'}`);
-  console.log(`🕒 Timestamp: ${timestamp}`);
-  console.log(`🔌 Sender Socket ID: ${senderSocketId}`);
-  console.log(`🔌 Recipient Socket ID: ${targetSocketId}`);
-
   try {
     // Step 1: Check if conversation exists
     const [results] = await db.query(
