@@ -79,7 +79,7 @@ app.get('/online-users', async (_, res) => {
 // ✅ Upload file
 app.post('/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const fileUrl = `http://172.20.10.9:8000/uploads/${req.file.filename}`;
+  const fileUrl = `http://localhost:8000/uploads/${req.file.filename}`;
   res.json({ url: fileUrl });
 });
 
@@ -142,28 +142,28 @@ app.get('/messages', async (req, res) => {
 });
 
 // ✅ Delete conversation
-app.post('/delete-conversation', async (req, res) => {
-  const { user1, user2 } = req.body;
-  if (!user1 || !user2) return res.status(400).json({ error: 'Missing users' });
+// app.post('/delete-conversation', async (req, res) => {u
+//   const { user1, user2 } = req.body;
+//   if (!user1 || !user2) return res.status(400).json({ error: 'Missing users' });
 
-  try {
-    const [results] = await db.query(`
-      SELECT id FROM conversations
-      WHERE (user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)
-    `, [user1, user2, user2, user1]);
+//   try {
+//     const [results] = await db.query(`
+//       SELECT id FROM conversations
+//       WHERE (user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)
+//     `, [user1, user2, user2, user1]);
 
-    if (results.length === 0) return res.status(404).json({ error: 'Conversation not found' });
+//     if (results.length === 0) return res.status(404).json({ error: 'Conversation not found' });
 
-    const conversationId = results[0].id;
+//     const conversationId = results[0].id;
 
-    await db.query(`DELETE FROM messages WHERE conversation_id = ?`, [conversationId]);
-    await db.query(`DELETE FROM conversations WHERE id = ?`, [conversationId]);
+//     await db.query(`DELETE FROM messages WHERE conversation_id = ?`, [conversationId]);
+//     await db.query(`DELETE FROM conversations WHERE id = ?`, [conversationId]);
 
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+//     res.json({ success: true });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 
 // ✅ Add contact

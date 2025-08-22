@@ -2,7 +2,7 @@ const db = require('../db'); // should already be db.promise()
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'your_secret_key';
+const JWT_SECRET = 'c0783be584669540650b36b5bc81bbb5';
 
 exports.loginUser = async (req, res) => {
   const { identifier, password } = req.body;
