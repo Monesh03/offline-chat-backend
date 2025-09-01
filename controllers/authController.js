@@ -2,7 +2,11 @@ const db = require('../db'); // should already be db.promise()
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'your_secret_key';
+// Import the activeSocketUsers from server.js (we'll need to export it)
+// For now, we'll create a separate check by counting active socket connections
+
+const JWT_SECRET = 'c0783be584669540650b36b5bc81bbb5';
+const MAX_CONCURRENT_USERS = 1;
 
 exports.loginUser = async (req, res) => {
   const { identifier, password } = req.body;
@@ -12,6 +16,23 @@ exports.loginUser = async (req, res) => {
   }
 
   try {
+    // Get the activeSocketUsers map from the app
+    const activeSocketUsers = req.app.get('activeSocketUsers') || new Map();
+    
+    // Check if this user is already connected (allow reconnection)
+    const isExistingActiveUser = activeSocketUsers.has(identifier);
+    
+    // If server is at capacity and this is a new user, reject login
+    if (!isExistingActiveUser && activeSocketUsers.size >= MAX_CONCURRENT_USERS) {
+      return res.status(429).json({ 
+        error: 'Server is at capacity. Maximum concurrent users allowed.',
+        code: 'USER_LIMIT_EXCEEDED',
+        currentUsers: activeSocketUsers.size,
+        maxUsers: MAX_CONCURRENT_USERS
+      });
+    }
+
+    // Proceed with normal login validation
     const [results] = await db.query('SELECT * FROM users WHERE identifier = ?', [identifier]);
 
     if (results.length === 0) {
@@ -26,6 +47,8 @@ exports.loginUser = async (req, res) => {
     }
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
+    
+    console.log(`✅ Login successful for ${identifier}. Active socket users: ${activeSocketUsers.size}/${MAX_CONCURRENT_USERS}`);
     return res.status(200).json({ message: 'Login successful', token, name: user.name, identifier: user.identifier });
   } catch (error) {
     console.error('❌ Login error:', error.message);
