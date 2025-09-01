@@ -534,7 +534,7 @@ io.on('connection', (socket) => {
   } catch (err) {
     console.error('❌ Error in privateMessage handler:', err);
   }
-});
+ } );
 
 
 
@@ -558,7 +558,9 @@ io.on('connection', (socket) => {
     // Broadcast updated lists
     io.emit('onlineUsers', Array.from(userSockets.keys()));
     io.emit('userCount', { current: activeUsers.size, max: MAX_CONCURRENT_USERS });
-});
+  }  );
+}
+)
 
 // ======================== START SERVER ========================
 const PORT = 8000;
