@@ -16,13 +16,13 @@ exports.loginUser = async (req, res) => {
   }
 
   try {
-    // Check current active socket users count
-    // We'll get this from the global activeSocketUsers map
+    // Get the activeSocketUsers map from the app
     const activeSocketUsers = req.app.get('activeSocketUsers') || new Map();
     
-    // Allow existing users to login (they might be reconnecting)
+    // Check if this user is already connected (allow reconnection)
     const isExistingActiveUser = activeSocketUsers.has(identifier);
     
+    // If server is at capacity and this is a new user, reject login
     if (!isExistingActiveUser && activeSocketUsers.size >= MAX_CONCURRENT_USERS) {
       return res.status(429).json({ 
         error: 'Server is at capacity. Maximum 50 concurrent users allowed.',
@@ -32,6 +32,7 @@ exports.loginUser = async (req, res) => {
       });
     }
 
+    // Proceed with normal login validation
     const [results] = await db.query('SELECT * FROM users WHERE identifier = ?', [identifier]);
 
     if (results.length === 0) {
@@ -46,6 +47,8 @@ exports.loginUser = async (req, res) => {
     }
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1d' });
+    
+    console.log(`✅ Login successful for ${identifier}. Active socket users: ${activeSocketUsers.size}/${MAX_CONCURRENT_USERS}`);
     return res.status(200).json({ message: 'Login successful', token, name: user.name, identifier: user.identifier });
   } catch (error) {
     console.error('❌ Login error:', error.message);
