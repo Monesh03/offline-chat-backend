@@ -2,7 +2,11 @@ const db = require('../db'); // should already be db.promise()
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+// Import the activeSocketUsers from server.js (we'll need to export it)
+// For now, we'll create a separate check by counting active socket connections
+
 const JWT_SECRET = 'c0783be584669540650b36b5bc81bbb5';
+const MAX_CONCURRENT_USERS = 50;
 
 exports.loginUser = async (req, res) => {
   const { identifier, password } = req.body;
@@ -12,6 +16,22 @@ exports.loginUser = async (req, res) => {
   }
 
   try {
+    // Check current active socket users count
+    // We'll get this from the global activeSocketUsers map
+    const activeSocketUsers = req.app.get('activeSocketUsers') || new Map();
+    
+    // Allow existing users to login (they might be reconnecting)
+    const isExistingActiveUser = activeSocketUsers.has(identifier);
+    
+    if (!isExistingActiveUser && activeSocketUsers.size >= MAX_CONCURRENT_USERS) {
+      return res.status(429).json({ 
+        error: 'Server is at capacity. Maximum 50 concurrent users allowed.',
+        code: 'USER_LIMIT_EXCEEDED',
+        currentUsers: activeSocketUsers.size,
+        maxUsers: MAX_CONCURRENT_USERS
+      });
+    }
+
     const [results] = await db.query('SELECT * FROM users WHERE identifier = ?', [identifier]);
 
     if (results.length === 0) {

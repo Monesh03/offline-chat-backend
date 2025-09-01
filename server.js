@@ -56,6 +56,8 @@ const userSockets = new Map();
 const MAX_CONCURRENT_USERS = 50;
 const activeSocketUsers = new Map(); // Track active socket connections: identifier -> socketId
 
+// Make activeSocketUsers available to other modules
+app.set('activeSocketUsers', activeSocketUsers);
 
 // ======================== ROUTES ========================
 
