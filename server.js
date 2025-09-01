@@ -52,8 +52,22 @@ const getISTTimestamp = () => {
 
 const userSockets = new Map();
 
+// ======================== USER LIMIT CONFIG ========================
+const MAX_CONCURRENT_USERS = 50;
+const activeUsers = new Set(); // Track active user identifiers
+
 
 // ======================== ROUTES ========================
+
+// ✅ Get server status and user count
+app.get('/server-status', (_, res) => {
+  res.json({
+    currentUsers: activeUsers.size,
+    maxUsers: MAX_CONCURRENT_USERS,
+    available: activeUsers.size < MAX_CONCURRENT_USERS,
+    onlineUsers: Array.from(userSockets.keys())
+  });
+});
 
 // ✅ Get all users
 app.get('/users', async (_, res) => {
@@ -405,6 +419,42 @@ app.post('/add-group-member', async (req, res) => {
 // ======================== SOCKET.IO ========================
 io.on('connection', (socket) => {
 
+  // ✅ Handle user registration with limit check
+  socket.on('registerUser', (identifier) => {
+    if (!identifier) return;
+
+    // Check if user is already connected (allow reconnection)
+    if (activeUsers.has(identifier)) {
+      userSockets.set(identifier, socket.id);
+      socket.emit('registrationStatus', { success: true, message: 'Reconnected successfully' });
+      io.emit('onlineUsers', Array.from(userSockets.keys()));
+      return;
+    }
+
+    // Check concurrent user limit for new connections
+    if (activeUsers.size >= MAX_CONCURRENT_USERS) {
+      socket.emit('registrationStatus', { 
+        success: false, 
+        message: `Server is at capacity. Maximum ${MAX_CONCURRENT_USERS} users allowed.`,
+        code: 'USER_LIMIT_EXCEEDED'
+      });
+      socket.disconnect(true);
+      return;
+    }
+
+    // Register new user
+    activeUsers.add(identifier);
+    userSockets.set(identifier, socket.id);
+    socket.userId = identifier; // Store for cleanup on disconnect
+    
+    socket.emit('registrationStatus', { success: true, message: 'Connected successfully' });
+    io.emit('onlineUsers', Array.from(userSockets.keys()));
+    io.emit('userCount', { current: activeUsers.size, max: MAX_CONCURRENT_USERS });
+    
+    console.log(`✅ User ${identifier} connected. Active users: ${activeUsers.size}/${MAX_CONCURRENT_USERS}`);
+  });
+
+
   // ✅ Join the group room
   socket.on('joinGroup', (groupId) => {
     socket.join(groupId.toString());
@@ -420,11 +470,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`🔴 Client disconnected: ${socket.id}`);
-  });
-  socket.on('registerUser', (identifier) => {
-    if (!identifier) return;
-    userSockets.set(identifier, socket.id);
-    io.emit('onlineUsers', Array.from(userSockets.keys()));
   });
 
  socket.on('privateMessage', async ({ from, to, text, attachment_url }) => {
@@ -494,14 +539,25 @@ io.on('connection', (socket) => {
 
 
   socket.on('disconnect', () => {
+    console.log(`🔴 Client disconnected: ${socket.id}`);
+    
+    // Clean up user data
+    if (socket.userId) {
+      activeUsers.delete(socket.userId);
+      console.log(`🧹 Removed user ${socket.userId} from active users. Active users: ${activeUsers.size}/${MAX_CONCURRENT_USERS}`);
+    }
+    
+    // Clean up userSockets map
     for (let [key, val] of userSockets.entries()) {
       if (val === socket.id) {
         userSockets.delete(key);
         break;
       }
     }
+    
+    // Broadcast updated lists
     io.emit('onlineUsers', Array.from(userSockets.keys()));
-  });
+    io.emit('userCount', { current: activeUsers.size, max: MAX_CONCURRENT_USERS });
 });
 
 // ======================== START SERVER ========================
