@@ -430,11 +430,13 @@ io.on('connection', (socket) => {
       socket.emit('registrationStatus', { success: true, message: 'Reconnected successfully' });
       socket.userId = identifier;
       io.emit('onlineUsers', Array.from(activeSocketUsers.keys()));
+      console.log(`🔄 User ${identifier} reconnected. Active socket users: ${activeSocketUsers.size}/${MAX_CONCURRENT_USERS}`);
       return;
     }
 
     // Check concurrent socket user limit for new connections
     if (activeSocketUsers.size >= MAX_CONCURRENT_USERS) {
+      console.log(`❌ User ${identifier} rejected - server at capacity (${activeSocketUsers.size}/${MAX_CONCURRENT_USERS})`);
       socket.emit('registrationStatus', { 
         success: false, 
         message: `Server is at capacity. Maximum ${MAX_CONCURRENT_USERS} users allowed.`,
