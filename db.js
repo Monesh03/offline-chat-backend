@@ -5,8 +5,8 @@ const mysql = require('mysql2');
 const db = mysql.createPool({
   host: '127.0.0.1',
   user: 'root',
-  password: 'Monesh@27',
-  database: 'chatapp',
+  password: 'preethi@123',
+  database: 'chat_app',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
