@@ -1,5 +1,19 @@
-from locust import HttpUser, task, between
+from locust import HttpUser, task, between, events
 import random
+import datetime
+import socket
+
+def get_local_ip():
+    # gets LAN IP instead of 127.0.0.1
+    hostname = socket.gethostname()
+    return socket.gethostbyname(hostname)
+
+def trace_headers():
+    return {
+        "X-Trace-IP": get_local_ip(),
+        "X-Trace-Timestamp": datetime.datetime.now().isoformat(),
+        "User-Agent": "LocustLoadTester/1.0"
+    }
 
 class ChatAppUser(HttpUser):
     wait_time = between(1, 3)
@@ -16,13 +30,13 @@ class ChatAppUser(HttpUser):
             "name": "Locust Test",
             "identifier": self.identifier,
             "password": self.password
-        })
+        }, headers=trace_headers())
 
         # Login
         login_resp = self.client.post("/api/auth/login", json={
             "identifier": self.identifier,
             "password": self.password
-        })
+        }, headers=trace_headers())
 
         if login_resp.status_code == 200 and login_resp.json():
             self.user_id = login_resp.json().get("id")
@@ -33,7 +47,7 @@ class ChatAppUser(HttpUser):
         self.client.post("/api/auth/login", json={
             "identifier": self.identifier,
             "password": self.password
-        })
+        }, headers=trace_headers())
 
     @task(1)
     def register_new(self):
@@ -42,7 +56,7 @@ class ChatAppUser(HttpUser):
             "name": "Another Test",
             "identifier": new_identifier,
             "password": "test123"
-        })
+        }, headers=trace_headers())
 
     # ---------------- CONTACTS ----------------
     @task(1)
@@ -55,22 +69,22 @@ class ChatAppUser(HttpUser):
             "name": "Contact User",
             "identifier": new_identifier,
             "password": "test123"
-        })
+        }, headers=trace_headers())
         contact_id = None
         if reg_resp.status_code == 200 and reg_resp.json():
             contact_id = reg_resp.json().get("id")
 
         if contact_id:
             self.client.post("/add-contact", json={
-                "owner": self.user_id,          # ✅ backend expects owner
-                "contact": contact_id,          # ✅ backend expects contact
+                "owner": self.user_id,
+                "contact": contact_id,
                 "name": f"Friend-{random.randint(1,100)}"
-            })
+            }, headers=trace_headers())
 
     @task(1)
     def fetch_contacts(self):
         if self.user_id:
-            self.client.get(f"/contacts/{self.user_id}")
+            self.client.get(f"/contacts/{self.user_id}", headers=trace_headers())
 
     @task(1)
     def delete_contact(self):
@@ -78,16 +92,16 @@ class ChatAppUser(HttpUser):
             self.client.post("/delete-contact", json={
                 "owner": self.user_id,
                 "contact": self.user_id + 1     # dummy contact
-            })
+            }, headers=trace_headers())
 
     # ---------------- USERS & MESSAGES ----------------
     @task(1)
     def fetch_users(self):
-        self.client.get("/users")
+        self.client.get("/users", headers=trace_headers())
 
     @task(1)
     def fetch_messages(self):
-        self.client.get("/messages")
+        self.client.get("/messages", headers=trace_headers())
 
     @task(1)
     def delete_conversation(self):
@@ -95,7 +109,7 @@ class ChatAppUser(HttpUser):
             self.client.post("/delete-conversation", json={
                 "user1": self.user_id,
                 "user2": self.user_id + 1
-            })
+            }, headers=trace_headers())
 
     # ---------------- GROUPS ----------------
     @task(1)
@@ -104,12 +118,12 @@ class ChatAppUser(HttpUser):
             self.client.post("/create-group", json={
                 "name": f"Group-{random.randint(1,100)}",
                 "admin": self.user_id
-            })
+            }, headers=trace_headers())
 
     @task(1)
     def fetch_groups(self):
         if self.user_id:
-            self.client.get(f"/groups/{self.user_id}")
+            self.client.get(f"/groups/{self.user_id}", headers=trace_headers())
 
     @task(1)
     def add_group_member(self):
@@ -117,15 +131,15 @@ class ChatAppUser(HttpUser):
             self.client.post("/add-group-member", json={
                 "groupId": 1,
                 "member": self.user_id
-            })
+            }, headers=trace_headers())
 
     @task(1)
     def fetch_group_members(self):
-        self.client.get("/group-members/1")
+        self.client.get("/group-members/1", headers=trace_headers())
 
     @task(1)
     def fetch_group_messages(self):
-        self.client.get("/group-messages/1")
+        self.client.get("/group-messages/1", headers=trace_headers())
 
     @task(1)
     def send_group_message(self):
@@ -136,8 +150,22 @@ class ChatAppUser(HttpUser):
                 "text": "Hello from Locust!",
                 "attachment_url": None,
                 "timestamp": "2025-09-01 12:00:00"
-            })
+            }, headers=trace_headers())
 
     @task(1)
     def fetch_group_info(self):
-        self.client.get("/group-info/1")
+        self.client.get("/group-info/1", headers=trace_headers())
+
+
+# ---------------- LOCUST EVENT LOGGER ----------------
+@events.request.add_listener
+def log_request(request_type, name, response_time, response_length, response, **kwargs):
+    trace_ip = response.request.headers.get("X-Trace-IP", "N/A")
+    trace_ts = response.request.headers.get("X-Trace-Timestamp", "N/A")
+    trace_agent = response.request.headers.get("User-Agent", "N/A")
+
+    print(
+        f"[TRACE] {request_type} {name} | "
+        f"Status: {response.status_code} | "
+        f"IP: {trace_ip} | Agent: {trace_agent} | Timestamp: {trace_ts}"
+    )

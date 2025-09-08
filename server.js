@@ -27,6 +27,44 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 
+app.use((req, res, next) => {
+  const entryTime = new Date();
+
+  // After response is finished, log exit
+  res.on("finish", () => {
+    const exitTime = new Date();
+    const duration = exitTime - entryTime; // in ms
+
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    const userAgent = req.get("User-Agent");
+
+    const logData = {
+      ip_address: ip,
+      user_agent: userAgent,
+      endpoint: req.originalUrl,
+      method: req.method,
+      entry_time: entryTime,
+      exit_time: exitTime,
+      duration_ms: duration
+    };
+
+    // Insert into DB
+    db.query(
+      "INSERT INTO traces (ip_address, user_agent, endpoint, method, entry_time, exit_time, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        logData.ip_address,
+        logData.user_agent,
+        logData.endpoint,
+        logData.method,
+        logData.entry_time,
+        logData.exit_time,
+        logData.duration_ms
+      ]
+    ).catch(err => console.error("Trace log insert error:", err));
+  });
+
+  next();
+});
 
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
