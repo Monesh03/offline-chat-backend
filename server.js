@@ -27,45 +27,59 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 
-app.use((req, res, next) => {
-  const entryTime = new Date();
+app.use(async (req, res, next) => {
+  const startTime = new Date();
 
-  // After response is finished, log exit
-  res.on("finish", () => {
-    const exitTime = new Date();
-    const duration = exitTime - entryTime; // in ms
+  res.on("finish", async () => {
+    const endTime = new Date();
+    const duration = endTime - startTime; // ms
 
-    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    let ip =
+      req.headers["x-trace-ip"] ||
+      req.headers["x-forwarded-for"] ||
+      req.socket.remoteAddress;
+
+    if (ip.includes("::ffff:")) ip = ip.split("::ffff:")[1];
+    if (ip === "::1") ip = "127.0.0.1";
+
     const userAgent = req.get("User-Agent");
 
-    const logData = {
-      ip_address: ip,
-      user_agent: userAgent,
-      endpoint: req.originalUrl,
-      method: req.method,
-      entry_time: entryTime,
-      exit_time: exitTime,
-      duration_ms: duration
-    };
+    const formatDateTime = (date) =>
+  date.toISOString().slice(0, 23).replace("T", " "); 
+// → keeps milliseconds (3 digits)
 
-    // Insert into DB
-    db.query(
-      "INSERT INTO traces (ip_address, user_agent, endpoint, method, entry_time, exit_time, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [
-        logData.ip_address,
-        logData.user_agent,
-        logData.endpoint,
-        logData.method,
-        logData.entry_time,
-        logData.exit_time,
-        logData.duration_ms
-      ]
-    ).catch(err => console.error("Trace log insert error:", err));
+const logEntry = {
+  endpoint: req.originalUrl,
+  method: req.method,
+  ip_address: ip,
+  user_agent: userAgent,
+  response_time_ms: duration,
+  entry_time: formatDateTime(startTime), // ✅ with ms
+  exit_time: formatDateTime(endTime)     // ✅ with ms
+};
+
+    try {
+      await db.query(
+        `INSERT INTO request_logs 
+         (endpoint, method, ip_address, user_agent, response_time_ms, entry_time, exit_time) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          logEntry.endpoint,
+          logEntry.method,
+          logEntry.ip_address,
+          logEntry.user_agent,
+          logEntry.response_time_ms,
+          logEntry.entry_time,
+          logEntry.exit_time
+        ]
+      );
+    } catch (err) {
+      console.error("❌ Failed to insert request log:", err.message);
+    }
   });
 
   next();
 });
-
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
@@ -92,6 +106,36 @@ const userSockets = new Map();
 
 
 // ======================== ROUTES ========================
+
+// Fetch all request logs
+app.get('/api/request-logs', async (req, res) => {
+  try {
+    const [rows] = await db.query(`SELECT * FROM request_logs ORDER BY created_at DESC LIMIT 100`);
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching request logs:", err);
+    res.status(500).json({ error: 'Failed to fetch request logs' });
+  }
+});
+
+app.get('/api/performance-stats', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        endpoint, 
+        method, 
+        COUNT(*) AS total_requests, 
+        ROUND(AVG(response_time_ms), 2) AS avg_response_time
+      FROM request_logs
+      GROUP BY endpoint, method
+      ORDER BY total_requests DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("Error fetching performance stats:", err);
+    res.status(500).json({ error: 'Failed to fetch performance stats' });
+  }
+});
 
 // ✅ Get all users
 app.get('/users', async (_, res) => {

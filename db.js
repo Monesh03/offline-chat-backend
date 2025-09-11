@@ -92,6 +92,18 @@ const db = mysql.createPool({
       )
     `);
 
+     await connection.query(`
+      CREATE TABLE IF NOT EXISTS request_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        endpoint VARCHAR(255),         -- API endpoint hit
+        method VARCHAR(10),            -- GET / POST
+        ip_address VARCHAR(50),        -- Client IP
+        user_agent TEXT,               -- Browser/Frontend info
+        response_time_ms INT,          -- Response latency
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
     connection.release();
     console.log('✅ All tables initialized');
   } catch (err) {
