@@ -25,44 +25,43 @@ const io = socketIO(server, {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/api/auth', authRoutes);
 
 app.use(async (req, res, next) => {
   const startTime = new Date();
 
   res.on("finish", async () => {
     const endTime = new Date();
-    const duration = endTime - startTime; // ms
+    const duration = endTime - startTime; // ✅ response time in ms
 
     let ip =
       req.headers["x-trace-ip"] ||
       req.headers["x-forwarded-for"] ||
       req.socket.remoteAddress;
 
-    if (ip.includes("::ffff:")) ip = ip.split("::ffff:")[1];
+    if (ip && ip.includes("::ffff:")) ip = ip.split("::ffff:")[1];
     if (ip === "::1") ip = "127.0.0.1";
 
     const userAgent = req.get("User-Agent");
 
-    const formatDateTime = (date) =>
-  date.toISOString().slice(0, 23).replace("T", " "); 
-// → keeps milliseconds (3 digits)
+    // ✅ status from response
+    const status = res.statusCode < 400 ? "SUCCESS" : "FAILED";
 
-const logEntry = {
-  endpoint: req.originalUrl,
-  method: req.method,
-  ip_address: ip,
-  user_agent: userAgent,
-  response_time_ms: duration,
-  entry_time: formatDateTime(startTime), // ✅ with ms
-  exit_time: formatDateTime(endTime)     // ✅ with ms
-};
+    const logEntry = {
+      endpoint: req.originalUrl,
+      method: req.method,
+      ip_address: ip,
+      user_agent: userAgent,
+      response_time_ms: duration,
+      entry_time: startTime,
+      exit_time: endTime,
+      status: status,
+    };
 
     try {
       await db.query(
         `INSERT INTO request_logs 
-         (endpoint, method, ip_address, user_agent, response_time_ms, entry_time, exit_time) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (endpoint, method, ip_address, user_agent, response_time_ms, entry_time, exit_time, status) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           logEntry.endpoint,
           logEntry.method,
@@ -70,7 +69,8 @@ const logEntry = {
           logEntry.user_agent,
           logEntry.response_time_ms,
           logEntry.entry_time,
-          logEntry.exit_time
+          logEntry.exit_time,
+          logEntry.status,
         ]
       );
     } catch (err) {
@@ -80,6 +80,8 @@ const logEntry = {
 
   next();
 });
+
+app.use('/api/auth', authRoutes);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
@@ -118,22 +120,19 @@ app.get('/api/request-logs', async (req, res) => {
   }
 });
 
-app.get('/api/performance-stats', async (req, res) => {
+app.get("/api/performance-stats", async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT 
-        endpoint, 
-        method, 
-        COUNT(*) AS total_requests, 
-        ROUND(AVG(response_time_ms), 2) AS avg_response_time
+      SELECT endpoint, method, status,
+             AVG(response_time_ms) AS avg_response_time,
+             COUNT(*) AS total_requests
       FROM request_logs
-      GROUP BY endpoint, method
-      ORDER BY total_requests DESC
+      GROUP BY endpoint, method, status
     `);
     res.json(rows);
   } catch (err) {
     console.error("Error fetching performance stats:", err);
-    res.status(500).json({ error: 'Failed to fetch performance stats' });
+    res.status(500).json({ error: "Failed to fetch performance stats" });
   }
 });
 
@@ -588,6 +587,6 @@ io.on('connection', (socket) => {
 
 // ======================== START SERVER ========================
 const PORT = 8000;
-server.listen(PORT, () => {
+server.listen(PORT,'0.0.0.0', () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
