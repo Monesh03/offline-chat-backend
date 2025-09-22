@@ -6,7 +6,7 @@ import socket
 import requests
 
 # ✅ Node backend API where we log
-BACKEND_LOG_URL = "http://localhost:8000/api/log-performance"
+BACKEND_LOG_URL = "http://192.168.169.248:8000/api/log-performance"
 
 # ✅ Get machine's LAN IP
 def get_machine_ip():
@@ -45,7 +45,7 @@ def log_request(endpoint, method, response, user_agent="LocustLoadTester/1.0"):
 
 class ChatAppUser(HttpUser):
     wait_time = between(1, 3)
-    host = "http://localhost:8000"
+    host = "http://192.168.169.248:8000"
 
     def on_start(self):
         """Register and login a new user before tasks run"""

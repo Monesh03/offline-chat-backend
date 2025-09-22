@@ -160,7 +160,7 @@ app.get('/online-users', async (_, res) => {
 // ✅ Upload file
 app.post('/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const fileUrl = `http://172.20.10.9:8000/uploads/${req.file.filename}`;
+  const fileUrl = `http://192.168.169.248:8000/uploads/${req.file.filename}`;
   res.json({ url: fileUrl });
 });
 
@@ -174,7 +174,7 @@ app.post('/upload-base64', (req, res) => {
   const filepath = path.join(UPLOAD_DIR, filename);
 
   fs.writeFileSync(filepath, Buffer.from(base64, 'base64'));
-  const url = `http://localhost:8000/uploads/${filename}`;
+  const url = `http://192.168.169.248:8000/uploads/${filename}`;
   res.json({ url });
 });
 
